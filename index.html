@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PetPooja Menu Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0f; --s1:#111118; --s2:#1a1a24; --s3:#22222e;
+  --border:#2a2a3a; --border2:#363648;
+  --accent:#7c6fff; --accent2:#ff6b9d; --accent3:#00d4aa;
+  --gold:#f0a500; --gold2:#ff6b35;
+  --green:#22c55e; --red:#ef4444; --yellow:#f59e0b;
+  --text:#f0f0f8; --muted:#7070a0; --muted2:#50507a;
+  --font:'Inter',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;}
+
+/* bg glow */
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background: radial-gradient(ellipse 60% 40% at 20% 10%, rgba(124,111,255,0.06) 0%, transparent 60%),
+              radial-gradient(ellipse 40% 30% at 80% 80%, rgba(0,212,170,0.04) 0%, transparent 60%);}
+
+.wrap{max-width:860px;margin:0 auto;padding:48px 24px 80px;position:relative;z-index:1;}
+
+/* ── Header ── */
+.header{margin-bottom:48px;}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:100px;
+  border:1px solid rgba(124,111,255,0.3);background:rgba(124,111,255,0.08);
+  font-size:10px;font-family:var(--mono);letter-spacing:2px;color:var(--accent);
+  text-transform:uppercase;margin-bottom:20px;}
+.pill-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;}
+h1{font-size:clamp(30px,5vw,52px);font-weight:800;line-height:1.05;letter-spacing:-1.5px;margin-bottom:12px;}
+.grad{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.sub{color:var(--muted);font-size:14px;line-height:1.7;max-width:520px;}
+
+/* ── Mode Tabs ── */
+.tabs{display:flex;gap:4px;background:var(--s1);border:1px solid var(--border);
+  border-radius:14px;padding:5px;margin-bottom:24px;}
+.tab{flex:1;padding:14px 8px;border-radius:10px;border:none;background:transparent;
+  color:var(--muted);font-family:var(--font);font-size:12px;font-weight:600;
+  cursor:pointer;transition:all 0.25s;text-align:center;position:relative;}
+.tab.on{background:var(--s3);color:var(--text);box-shadow:0 2px 12px rgba(0,0,0,0.3);}
+.tab.on::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+  width:24px;height:2px;border-radius:100px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.tab-icon{display:block;font-size:18px;margin-bottom:4px;}
+.tab-label{display:block;font-weight:700;font-size:11px;}
+.tab-sub{display:block;font-size:9px;opacity:0.55;margin-top:2px;font-weight:400;}
+
+/* ── Cards ── */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:18px;
+  padding:28px;margin-bottom:16px;transition:all 0.3s;}
+.card.lit{border-color:rgba(124,111,255,0.35);background:rgba(124,111,255,0.03);}
+.card.done{border-color:rgba(34,197,94,0.3);background:rgba(34,197,94,0.02);}
+.card.fail{border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.02);}
+.card-head{display:flex;align-items:center;gap:14px;margin-bottom:24px;}
+.step-badge{width:34px;height:34px;border-radius:10px;flex-shrink:0;
+  background:var(--s2);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:12px;color:var(--muted);transition:all 0.3s;}
+.card.lit .step-badge{background:rgba(124,111,255,0.15);border-color:var(--accent);color:var(--accent);}
+.card.done .step-badge{background:rgba(34,197,94,0.15);border-color:var(--green);color:var(--green);}
+.card-title{font-size:15px;font-weight:700;letter-spacing:-0.3px;}
+.card-desc{font-size:12px;color:var(--muted);margin-top:3px;}
+
+/* ── Upload zones ── */
+.uzones{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;}
+.uzone{border:1.5px dashed var(--border2);border-radius:14px;padding:22px 16px;
+  text-align:center;cursor:pointer;transition:all 0.25s;position:relative;background:var(--s2);}
+.uzone:hover{border-color:var(--accent);background:rgba(124,111,255,0.06);transform:translateY(-1px);}
+.uzone.got{border-color:var(--green);border-style:solid;background:rgba(34,197,94,0.05);}
+.uzone.dim{opacity:0.25;pointer-events:none;}
+.uzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.uzone-icon{font-size:26px;display:block;margin-bottom:10px;}
+.uzone-label{font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;
+  color:var(--muted);display:block;margin-bottom:4px;}
+.uzone-hint{font-size:10px;color:var(--muted2);font-family:var(--mono);}
+.uzone-file{font-size:10px;color:var(--green);font-family:var(--mono);margin-top:6px;
+  word-break:break-all;display:none;}
+.uzone.got .uzone-label{color:var(--green);}
+.uzone.got .uzone-file{display:block;}
+.uzone.got .uzone-hint{display:none;}
+
+/* ── Code input ── */
+.code-row{display:flex;align-items:center;gap:10px;margin-top:16px;
+  background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;flex-wrap:wrap;}
+.code-label{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.code-input{flex:1;min-width:160px;background:#0d0d15;border:1px solid var(--border2);
+  border-radius:8px;padding:9px 13px;color:var(--text);font-family:var(--mono);
+  font-size:13px;outline:none;transition:border-color 0.2s;}
+.code-input:focus{border-color:var(--accent);}
+.code-hint{font-size:10px;color:var(--muted2);font-family:var(--mono);width:100%;margin-top:4px;}
+.code-preview{font-family:var(--mono);font-size:11px;color:var(--accent);
+  background:rgba(124,111,255,0.1);border:1px solid rgba(124,111,255,0.2);
+  padding:3px 8px;border-radius:6px;white-space:nowrap;}
+
+/* ── Run button ── */
+.runbtn{width:100%;margin-top:18px;padding:17px;border-radius:13px;border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;font-family:var(--font);font-size:15px;font-weight:700;
+  cursor:pointer;transition:all 0.25s;letter-spacing:-0.3px;}
+.runbtn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 16px 40px rgba(124,111,255,0.35);}
+.runbtn:disabled{opacity:0.35;cursor:not-allowed;background:var(--s3);color:var(--muted);}
+
+/* ── Log ── */
+.logbox{background:#070710;border:1px solid var(--border);border-radius:12px;
+  padding:16px;font-family:var(--mono);font-size:11.5px;line-height:2;
+  min-height:110px;max-height:260px;overflow-y:auto;margin-top:14px;}
+.lr{display:flex;gap:8px;}
+.lr.info .lc{color:var(--accent);}
+.lr.ok   .lc{color:var(--green);}
+.lr.err  .lc{color:var(--red);}
+.lr.warn .lc{color:var(--yellow);}
+.lr .lm{color:#9090c0;}
+.lr.ok .lm{color:var(--green);}
+.lr.err .lm{color:var(--red);}
+.pgwrap{height:2px;background:var(--border);border-radius:100px;overflow:hidden;margin-top:14px;}
+.pgbar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width 0.4s;border-radius:100px;}
+
+/* ── Stats ── */
+.stats{display:flex;gap:0;margin-top:16px;background:var(--s2);
+  border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.stat{flex:1;padding:16px 18px;border-right:1px solid var(--border);}
+.stat:last-child{border-right:none;}
+.stat-val{font-size:24px;font-weight:800;color:var(--accent);display:block;font-family:var(--mono);letter-spacing:-1px;}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px;display:block;}
+
+/* ── Downloads ── */
+.dl-section{margin-top:16px;}
+.dl-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:1.5px;margin-bottom:10px;}
+.dlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;}
+.dlbtn{display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:13px;
+  background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  text-decoration:none;transition:all 0.25s;font-family:var(--font);position:relative;overflow:hidden;}
+.dlbtn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--accent),var(--accent2));opacity:0;transition:opacity 0.25s;}
+.dlbtn:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(124,111,255,0.2);}
+.dlbtn:hover::before{opacity:0.06;}
+.dlbtn-icon{font-size:22px;position:relative;z-index:1;}
+.dlbtn-info{position:relative;z-index:1;}
+.dlbtn-name{font-size:13px;font-weight:700;display:block;letter-spacing:-0.3px;}
+.dlbtn-desc{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.2);
+  border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;
+  vertical-align:middle;margin-right:8px;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+@media(max-width:560px){.tabs{flex-direction:column;}.uzones{grid-template-columns:1fr;}.stats{flex-direction:column;}.stat{border-right:none;border-bottom:1px solid var(--border);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Header -->
+<div class="header">
+  <div class="pill"><span class="pill-dot"></span>PetPooja Menu Tool v4.0</div>
+  <h1>Menu <span class="grad">Automation</span><br>Tool</h1>
+  <p class="sub">Swiggy menu convert karo, PP File banao, Assign Sheet update karo — sab ek jagah.</p>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab on" id="m1" onclick="setMode(1)">
+    <span class="tab-icon">🚀</span>
+    <span class="tab-label">Swiggy Convert</span>
+    <span class="tab-sub">AI Sheet + Addon File</span>
+  </button>
+  <button class="tab" id="m2" onclick="setMode(2)">
+    <span class="tab-icon">📋</span>
+    <span class="tab-label">Assign Sheet</span>
+    <span class="tab-sub">N → Y update</span>
+  </button>
+
+</div>
+
+<!-- Step 1 -->
+<div class="card lit" id="s1">
+  <div class="card-head">
+    <div class="step-badge" id="n1">01</div>
+    <div>
+      <div class="card-title">Files Upload Karo</div>
+      <div class="card-desc" id="s1d">Swiggy restaurant file + Addon file</div>
+    </div>
+  </div>
+
+  <div class="uzones">
+    <div class="uzone" id="zr">
+      <input type="file" accept=".csv,.xlsx,.xls" onchange="pick(this,'r')">
+      <span class="uzone-icon">🍽️</span>
+      <span class="uzone-label">Restaurant / Menu</span>
+      <span class="uzone-hint">Swiggy restaurant CSV ya xlsx</span>
+      <span class="uzone-file" id="fr"></span>
+    </div>
+    <div class="uzone" id="za">
+      <input type="file" accept=".csv,.xlsx,.xls" onchange="pick(this,'a')">
+      <span class="uzone-icon">➕</span>
+      <span class="uzone-label">Addon File</span>
+      <span class="uzone-hint">bulk_rest_addons CSV</span>
+      <span class="uzone-file" id="fa"></span>
+    </div>
+    <div class="uzone dim" id="zs" style="display:none">
+      <input type="file" accept=".csv,.xlsx,.xls" onchange="pick(this,'s')">
+      <span class="uzone-icon">📋</span>
+      <span class="uzone-label">Assign Sheet</span>
+      <span class="uzone-hint">PetPooja assign sheet</span>
+      <span class="uzone-file" id="fs"></span>
+    </div>
+  </div>
+
+  <!-- Code input -->
+  <div class="code-row" id="codeBox">
+    <span class="code-label">🏷️ Online Code</span>
+    <input class="code-input" type="text" id="mainCode" maxlength="20"
+      placeholder="e.g. O ya DSZ ya PHD — khali choddo agar nahi chahiye"
+      oninput="onCodeInput(this)">
+    <span class="code-preview" id="codePreview" style="display:none"></span>
+  </div>
+  <div class="code-hint" style="padding:0 4px;margin-top:6px;" id="codeHint">
+    Mode 1: Item naam, Category, Short_Code aur Addon Group Name me yahi code lagega
+  </div>
+
+  <button class="runbtn" id="runBtn" disabled onclick="run()">⚡ Process Karo</button>
+</div>
+
+<!-- Step 2: Processing -->
+<div class="card" id="s2">
+  <div class="card-head">
+    <div class="step-badge" id="n2">02</div>
+    <div><div class="card-title">Processing</div><div class="card-desc">Step by step status</div></div>
+  </div>
+  <div class="pgwrap"><div class="pgbar" id="pg"></div></div>
+  <div class="logbox" id="log">
+    <div style="color:var(--muted2);font-size:11px">Files upload karo aur Process Karo dabao...</div>
+  </div>
+</div>
+
+<!-- Step 3: Download -->
+<div class="card" id="s3">
+  <div class="card-head">
+    <div class="step-badge" id="n3">03</div>
+    <div><div class="card-title">Download Karo</div><div class="card-desc">Output files ready hain</div></div>
+  </div>
+  <div class="stats" id="statsBox" style="display:none">
+    <div class="stat"><span class="stat-val" id="si">—</span><span class="stat-label">Items</span></div>
+    <div class="stat"><span class="stat-val" id="sg">—</span><span class="stat-label">Groups</span></div>
+    <div class="stat"><span class="stat-val" id="sc">—</span><span class="stat-label">Updated</span></div>
+    <div class="stat"><span class="stat-val" id="sd">—</span><span class="stat-label">Dups Fixed</span></div>
+  </div>
+  <div class="dl-section" id="dlSec" style="display:none">
+    <div class="dl-title">Ready Files</div>
+    <div class="dlgrid">
+      <a class="dlbtn" id="dlAI" href="#" download="AI_Sheet.csv" style="display:none">
+        <span class="dlbtn-icon">🤖</span>
+        <div class="dlbtn-info"><span class="dlbtn-name">AI Sheet</span><span class="dlbtn-desc" id="dlAId">PetPooja menu format</span></div>
+      </a>
+      <a class="dlbtn" id="dlPP" href="#" download="PP_File.csv" style="display:none">
+        <span class="dlbtn-icon">📄</span>
+        <div class="dlbtn-info"><span class="dlbtn-name">PP File (Addons)</span><span class="dlbtn-desc" id="dlPPd">PetPooja addon format</span></div>
+      </a>
+      <a class="dlbtn" id="dlAS" href="#" download="Assign.csv" style="display:none">
+        <span class="dlbtn-icon">✅</span>
+        <div class="dlbtn-info"><span class="dlbtn-name">Assign Sheet</span><span class="dlbtn-desc" id="dlASd">N → Y updated</span></div>
+      </a>
+      <a class="dlbtn" id="dlRP" href="#" download="Report.xlsx" style="display:none">
+        <span class="dlbtn-icon">📊</span>
+        <div class="dlbtn-info"><span class="dlbtn-name">Addon Report</span><span class="dlbtn-desc" id="dlRPd">Item-wise Excel</span></div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+// ── State ────────────────────────────────────────
+const F={r:null,a:null,s:null};
+let MODE=1;
+
+// ── Code preview ─────────────────────────────────
+function onCodeInput(el){
+  el.value=el.value.replace(/[^a-zA-Z0-9]/g,'');
+  const prev=document.getElementById('codePreview');
+  if(el.value){prev.textContent=`[${el.value}]`;prev.style.display='inline-flex';}
+  else prev.style.display='none';
+}
+
+// ── Mode ─────────────────────────────────────────
+function setMode(m){
+  MODE=m;
+  ['m1','m2'].forEach((id,i)=>document.getElementById(id).classList.toggle('on',i+1===m));
+
+  const zs=document.getElementById('zs');
+
+  // Reset assign zone
+  F.s=null; zs.classList.remove('got');
+  document.getElementById('fs').textContent='';
+
+  if(m===1){
+    zs.style.display='none';
+    document.getElementById('s1d').textContent='Swiggy restaurant file + Addon file';
+    document.getElementById('codeHint').textContent='Item naam, Category, Short_Code aur Addon Group Name me yahi code lagega';
+  } else if(m===2){
+    zs.style.display='';
+    zs.classList.remove('dim');
+    document.getElementById('s1d').textContent='Restaurant + Addon + Assign Sheet (3 files)';
+    document.getElementById('codeHint').textContent='Addon Group Name ke piche code lagega — e.g. "Naan [DSZ]"';
+  }
+  chk();
+}
+
+function chk(){
+  const ok=MODE===1?!!(F.r&&F.a):(F.r&&F.a&&F.s);
+  document.getElementById('runBtn').disabled=!ok;
+}
+
+function pick(inp,key){
+  const file=inp.files[0]; if(!file) return;
+  F[key]=file;
+  document.getElementById('z'+key).classList.add('got');
+  document.getElementById('f'+key).textContent=file.name;
+  chk();
+}
+
+// ── CSV ──────────────────────────────────────────
+function parseCSV(txt){return txt.split(/\r?\n/).filter(l=>l.trim()).map(parseLine);}
+function parseLine(line){
+  const r=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}
+    else if(c===','&&!q){r.push(cur.trim());cur='';}
+    else cur+=c;
+  }
+  r.push(cur.trim());return r;
+}
+function toObjs(rows){const h=rows[0];return rows.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]||''])));}
+function toCSV(heads,rows){
+  const e=v=>{const s=String(v??'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;};
+  return[heads.map(e).join(','),...rows.map(r=>heads.map(h=>e(r[h])).join(','))].join('\n');
+}
+function readF(file){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    if(file.name.match(/\.(xlsx|xls)$/i)){
+      fr.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'});res(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));}catch(err){rej(err);}};
+      fr.onerror=()=>rej(new Error('File read failed'));
+      fr.readAsArrayBuffer(file);
+    }else{
+      fr.onload=e=>res(e.target.result);
+      fr.onerror=()=>rej(new Error('File read failed'));
+      fr.readAsText(file);
+    }
+  });
+}
+
+// ── Log / Progress ───────────────────────────────
+function lg(msg,t='info'){
+  const box=document.getElementById('log');
+  const ic={info:'◆',ok:'✓',err:'✗',warn:'⚠'};
+  const d=document.createElement('div');d.className='lr '+t;
+  d.innerHTML=`<span class="lc">${ic[t]||'◆'}</span><span class="lm">${msg}</span>`;
+  box.appendChild(d);box.scrollTop=box.scrollHeight;
+}
+function pg(p){document.getElementById('pg').style.width=p+'%';}
+
+// ── Helpers ──────────────────────────────────────
+const AMBIGUOUS=['Soup','Curry'];
+function dispGrp(group,aName,dups){
+  if(!dups.includes(group))return group;
+  if(group==='Soup')return aName.includes('Chicken')?'Soup (Non-Veg)':'Soup (Veg)';
+  if(group==='Curry')return aName.includes('Chicken')?'Curry (Non-Veg)':'Curry (Veg)';
+  return group;
+}
+function stripCode(s){return s.replace(/\s*\[.*?\]\s*$/,'').trim();}
+function cleanName(n){return n.replace(/\s*\[[A-Za-z]+\]\s*/g,'').replace(/\s*\(Half\)\s*|\s*\(Full\)\s*/g,'').trim();}
+
+// ── Excel Report ─────────────────────────────────
+function buildXLSX(itemMap,addonRows,catMap,restName,dups){
+  const allGrps=[],seen=new Set(),grpAddons={};
+  for(const r of addonRows){
+    const g=dispGrp(r.group,r.addonName,dups);
+    if(!seen.has(g)){seen.add(g);allGrps.push(g);}
+    if(!grpAddons[g])grpAddons[g]=[];
+    if(!grpAddons[g].find(a=>a.name===r.addonName))grpAddons[g].push({name:r.addonName,price:r.price});
+  }
+  const items=Object.entries(itemMap).map(([n,gs])=>({name:n,cat:catMap[n]||'Other',groups:gs}))
+    .sort((a,b)=>a.cat.localeCompare(b.cat)||a.name.localeCompare(b.name));
+  const wb=XLSX.utils.book_new();
+  const d1=[[`Addon Assignment Report — ${restName}`],[`Items: ${items.length}  |  Groups: ${allGrps.length}  |  ✓ = Assigned`],['#','Item Name','Category',...allGrps]];
+  let n=1,lastCat=null;
+  for(const it of items){
+    if(it.cat!==lastCat){lastCat=it.cat;d1.push([`── ${it.cat} ──`]);}
+    d1.push([n++,it.name,it.cat,...allGrps.map(g=>it.groups.has(g)?'✓':'')]);
+  }
+  const ws1=XLSX.utils.aoa_to_sheet(d1);
+  ws1['!cols']=[{wch:5},{wch:38},{wch:22},...allGrps.map(g=>({wch:Math.max(12,g.length+2)}))];
+  ws1['!merges']=[{s:{r:0,c:0},e:{r:0,c:2+allGrps.length}},{s:{r:1,c:0},e:{r:1,c:2+allGrps.length}}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Item Addon Assignment');
+  const d2=[["Addon Groups Detail"],['Addon Group','Addon Item','Price (₹)','Menu Items Using This Group']];
+  for(const g of allGrps){
+    const al=grpAddons[g]||[];
+    const mi=items.filter(it=>it.groups.has(g)).map(it=>it.name).join(', ');
+    al.forEach((a,i)=>d2.push([i===0?g:'',a.name,a.price,i===0?mi:'']));
+  }
+  const ws2=XLSX.utils.aoa_to_sheet(d2);ws2['!cols']=[{wch:22},{wch:32},{wch:12},{wch:65}];
+  ws2['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Addon Groups Detail');
+  const d3=[['Summary'],['Addon Group','# Menu Items','# Addon Items']];
+  for(const g of allGrps)d3.push([g,items.filter(it=>it.groups.has(g)).length,(grpAddons[g]||[]).length]);
+  const ws3=XLSX.utils.aoa_to_sheet(d3);ws3['!cols']=[{wch:25},{wch:20},{wch:18}];
+  ws3['!merges']=[{s:{r:0,c:0},e:{r:0,c:2}}];
+  XLSX.utils.book_append_sheet(wb,ws3,'Summary');
+  const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+// ── Parse Restaurant Helper ───────────────────────
+function parseRestaurant(rTxt,fname){
+  const rRows=parseCSV(rTxt);
+  const rH=rRows[0];
+  const iiIdx=rH.indexOf('itemId'),inIdx=rH.indexOf('Name'),
+        icIdx=rH.indexOf('mainCategoryName'),irIdx=rH.indexOf('restaurantId');
+  if(iiIdx===-1||inIdx===-1)throw new Error('Restaurant file me itemId ya Name column nahi mila');
+  const itemMap={},catMap={};
+  for(let i=1;i<rRows.length;i++){
+    const row=rRows[i];
+    const raw=row[iiIdx]||'';const nm=(row[inIdx]||'').trim();
+    if(!raw||!nm)continue;
+    const id=raw.includes('.')?String(parseInt(raw)):raw.trim();
+    itemMap[id]=nm;
+    if(icIdx>=0)catMap[nm]=(row[icIdx]||'Other').trim();
+  }
+  const fnM=fname.match(/(\d{4,})/);
+  const cId=irIdx>=0&&rRows[1]?String(parseInt(rRows[1][irIdx]||'0')):null;
+  const restId=fnM?fnM[1]:(cId||'output');
+  return{itemMap,catMap,restId,rObjs:toObjs(rRows)};
+}
+
+// ── Parse Addon Helper ────────────────────────────
+function parseAddon(aTxt,itemMap){
+  const aRows=parseCSV(aTxt);
+  const aObjs=toObjs(aRows);
+  const gvm={};
+  for(const row of aObjs){
+    const g=(row['AddonGroup Name']||'').trim();
+    const v=String(row['Addon IsVeg'])==='1'?'veg':'non-veg';
+    if(!gvm[g])gvm[g]=new Set();gvm[g].add(v);
+  }
+  const dups=AMBIGUOUS.filter(g=>gvm[g]&&gvm[g].size>1);
+  const iAddonMap={},addonRows=[];
+  for(const row of aObjs){
+    const ids=(row['Items Id']||'').split(',').map(s=>s.trim());
+    const grp=(row['AddonGroup Name']||'').trim();
+    const an=(row['Addon Name']||'').trim();
+    const pr=row['Addon Price']||'0';
+    const vk=String(row['Addon IsVeg'])==='1'?'veg':'non-veg';
+    const dg=dispGrp(grp,an,dups);
+    addonRows.push({group:grp,addonName:an,price:pr,vegKey:vk});
+    for(const id of ids){
+      const nm=itemMap[id];if(!nm)continue;
+      if(!iAddonMap[nm])iAddonMap[nm]=new Set();
+      iAddonMap[nm].add(dg);
+    }
+  }
+  return{iAddonMap,addonRows,dups};
+}
+
+// ── Build PP File ─────────────────────────────────
+function buildPP(addonRows,dups,grpCode){
+  const ppH=['Addon_Group_Id','Addon_Group_Name','Addon_Group_online_display','Addon_Group_status',
+    'Addon_Min','Addon_Max','Addon_Item_Selection','Max_Selection_Per_Addon',
+    'Show_In_Online','Show_In_Pos','Addon_Group_Show_In_Captain','Allow_Open_Quantity',
+    'Addon_Item_Name','Addon_Item_Price','Addon_item_status','Attribute','Rank','Sapcode','Show_In_Captain'];
+  const gkc={};
+  for(const r of addonRows){const gk=r.group+'_'+r.vegKey;gkc[gk]=(gkc[gk]||0)+1;}
+  const ppRows=[];let sap=1;
+  for(const r of addonRows){
+    const gk=r.group+'_'+r.vegKey;
+    const mx=gkc[gk];
+    const dn=dispGrp(r.group,r.addonName,dups);
+    const dnWithCode=grpCode?(dn+' '+grpCode):dn;
+    const pr=parseFloat(r.price);
+    ppRows.push({
+      Addon_Group_Id:'',Addon_Group_Name:dnWithCode,Addon_Group_online_display:dn,
+      Addon_Group_status:'yes',Addon_Min:0,Addon_Max:mx,Addon_Item_Selection:'M',Max_Selection_Per_Addon:mx,
+      Show_In_Online:'Yes',Show_In_Pos:'No',Addon_Group_Show_In_Captain:'No',Allow_Open_Quantity:'No',
+      Addon_Item_Name:r.addonName,Addon_Item_Price:Number.isInteger(pr)?pr:r.price,
+      Addon_item_status:'yes',Attribute:r.vegKey==='veg'?'veg':'non-veg',
+      Rank:'',Sapcode:sap++,Show_In_Captain:'yes'
+    });
+  }
+  return 'Can not change,,,,,,,,,,,,,,,,,,\n'+toCSV(ppH,ppRows);
+}
+
+// ── Main Run ──────────────────────────────────────
+async function run(){
+  const btn=document.getElementById('runBtn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span>Processing...';
+  document.getElementById('log').innerHTML='';
+  pg(0);
+  document.getElementById('s2').classList.add('lit');
+  document.getElementById('statsBox').style.display='none';
+  document.getElementById('dlSec').style.display='none';
+  ['dlAI','dlPP','dlAS','dlRP'].forEach(id=>document.getElementById(id).style.display='none');
+
+  try{
+    // Get code
+    const codeRaw=(document.getElementById('mainCode').value||'').replace(/[^a-zA-Z0-9]/g,'').trim();
+    const bracket=codeRaw?` [${codeRaw}]`:'';
+    const grpCode=codeRaw?`[${codeRaw}]`:'';
+    if(codeRaw) lg(`Code: [${codeRaw}]`,'info');
+
+    // Read files
+    lg('Files padh raha hoon...','info');
+    const toRead=[readF(F.r),readF(F.a)];
+    if(MODE===2) toRead.push(readF(F.s));
+    const res=await Promise.all(toRead);
+    const rTxt=res[0],aTxt=res[1],sTxt=MODE===2?res[2]:null;
+    pg(15);lg('Files padh li!','ok');
+
+    // Parse restaurant
+    const {itemMap,catMap,restId,rObjs}=parseRestaurant(rTxt,F.r.name);
+    lg(`Restaurant: ${Object.keys(itemMap).length} items — ID: ${restId}`,'ok');
+    pg(30);
+
+    // Parse addon
+    const {iAddonMap,addonRows,dups}=parseAddon(aTxt,itemMap);
+    if(dups.length) lg(`Duplicate groups fixed: ${dups.join(', ')}`,'warn');
+    lg(`Addon mapping: ${Object.keys(iAddonMap).length} items me addons mile`,'ok');
+    pg(50);
+
+    let siVal=0,sgVal=0,scVal='—',sdVal=dups.length;
+
+    // ── MODE 1: Swiggy Convert → AI Sheet + PP File ──
+    if(MODE===1){
+      // AI Sheet
+      lg('AI Sheet bana raha hoon...','info');
+      const aiH=['Name','Item_Online_DisplayName','Variation_Name','Price',
+        'Category','Category_Online_DisplayName','Short_Code','Short_Code_2',
+        'Description','Attributes','Goods_Services'];
+      const aiRows=[];
+      for(const r of rObjs){
+        const nm=(r['Name']||'').trim();if(!nm)continue;
+        const cat=(r['mainCategoryName']||'').trim();
+        const price=r['price']||'0';
+        const desc=(r['description']||'').trim();
+        const vegRaw=(r['veg_egg_non']||'veg').trim().toLowerCase();
+        const attr=vegRaw==='non-veg'?'Non-veg':vegRaw==='egg'?'egg':'veg';
+        const priceNum=parseFloat(price);
+        const rowNum=aiRows.length+1;
+        const shortCode=codeRaw?(rowNum+' ['+codeRaw+']'):'';
+        aiRows.push({
+          Name:nm+bracket, Item_Online_DisplayName:nm,
+          Variation_Name:'',
+          Price:Number.isInteger(priceNum)?priceNum:price,
+          Category:cat+bracket, Category_Online_DisplayName:cat,
+          Short_Code:shortCode, Short_Code_2:'',
+          Description:desc==='nan'?'':desc,
+          Attributes:attr, Goods_Services:'services'
+        });
+      }
+      const aiCSV=toCSV(aiH,aiRows);
+      const aiBlob=new Blob([aiCSV],{type:'text/csv'});
+      const dlAI=document.getElementById('dlAI');
+      dlAI.href=URL.createObjectURL(aiBlob);
+      dlAI.download=`AI_Sheet_${restId}.csv`;
+      document.getElementById('dlAId').textContent=`AI_Sheet_${restId}.csv — ${aiRows.length} items`;
+      dlAI.style.display='flex';
+      lg(`AI Sheet ready: ${aiRows.length} items`,'ok');
+      pg(75);
+
+      // PP File
+      lg('PP File (Addons) bana raha hoon...','info');
+      const ppCSV=buildPP(addonRows,dups,grpCode);
+      const ppB=new Blob([ppCSV],{type:'text/csv'});
+      const dlPP=document.getElementById('dlPP');
+      dlPP.href=URL.createObjectURL(ppB);
+      dlPP.download=`PP_File_${restId}.csv`;
+      document.getElementById('dlPPd').textContent=`PP_File_${restId}.csv — ${addonRows.length} rows`;
+      dlPP.style.display='flex';
+      lg(`PP File ready: ${addonRows.length} rows`,'ok');
+      pg(85);
+
+      // Addon Report
+      lg('Addon Report bana raha hoon...','info');
+      const repBlob=buildXLSX(iAddonMap,addonRows,catMap,`Restaurant ${restId}`,dups);
+      const dlRP=document.getElementById('dlRP');
+      dlRP.href=URL.createObjectURL(repBlob);
+      dlRP.download=`Addon_Report_${restId}.xlsx`;
+      document.getElementById('dlRPd').textContent=`Addon_Report_${restId}.xlsx`;
+      dlRP.style.display='flex';
+      lg(`Report ready: ${Object.keys(iAddonMap).length} items`,'ok');
+      pg(100);
+
+      siVal=aiRows.length;
+      sgVal=new Set(addonRows.map(r=>dispGrp(r.group,r.addonName,dups))).size;
+    }
+
+    // ── MODE 2: Assign Sheet ──────────────────────
+    else if(MODE===2){
+      lg('PP File bana raha hoon...','info');
+      const ppCSV=buildPP(addonRows,dups,grpCode);
+      const ppB=new Blob([ppCSV],{type:'text/csv'});
+      const dlPP=document.getElementById('dlPP');
+      dlPP.href=URL.createObjectURL(ppB);
+      dlPP.download=`PP_File_${restId}.csv`;
+      document.getElementById('dlPPd').textContent=`PP_File_${restId}.csv`;
+      dlPP.style.display='flex';
+      pg(65);
+
+      lg('Assign Sheet update kar raha hoon...','info');
+      const aLines=sTxt.split(/\r?\n/);
+      let hIdx=-1;
+      for(let i=0;i<Math.min(aLines.length,10);i++){if(aLines[i].includes('Item_Name')){hIdx=i;break;}}
+      if(hIdx===-1)throw new Error('Assign sheet me Item_Name column nahi mila');
+      const ap=aLines.map(l=>parseLine(l));
+      const ah=ap[hIdx];
+      const ahCleanMap={};
+      ah.forEach((h,i)=>{ahCleanMap[stripCode(h)]=i;});
+      const ds=hIdx+4;
+      const ol=[...aLines.slice(0,ds)];
+      let updCells=0,nf=0;
+      for(let i=ds;i<aLines.length;i++){
+        if(!aLines[i].trim()){ol.push(aLines[i]);continue;}
+        const row=[...ap[i]];
+        const cn=cleanName(row[1]||'');
+        if(iAddonMap[cn]){
+          for(const col of iAddonMap[cn]){
+            let ci=ah.indexOf(col);
+            if(ci===-1)ci=ahCleanMap[stripCode(col)]??-1;
+            if(ci!==-1){row[ci]='Y';updCells++;}
+          }
+        }else nf++;
+        ol.push(row.map(v=>(v+'').includes(',')?`"${v}"`:v).join(','));
+      }
+      const assCSV=ol.join('\n');
+      const aB=new Blob([assCSV],{type:'text/csv'});
+      const dlAS=document.getElementById('dlAS');
+      dlAS.href=URL.createObjectURL(aB);
+      dlAS.download=`Assign_Sheet_${restId}.csv`;
+      document.getElementById('dlASd').textContent=`Assign_Sheet_${restId}.csv`;
+      dlAS.style.display='flex';
+      lg(`Assign Sheet: ${updCells} cells N → Y`,'ok');
+      if(nf>0)lg(`${nf} items me addon nahi tha`,'warn');
+      pg(100);
+
+      siVal=Object.keys(iAddonMap).length;
+      sgVal=new Set(addonRows.map(r=>dispGrp(r.group,r.addonName,dups))).size;
+      scVal=updCells;
+    }
+
+
+
+    // Stats
+    document.getElementById('si').textContent=siVal;
+    document.getElementById('sg').textContent=sgVal;
+    document.getElementById('sc').textContent=scVal;
+    document.getElementById('sd').textContent=sdVal;
+
+    // Show results
+    document.getElementById('statsBox').style.display='flex';
+    document.getElementById('dlSec').style.display='block';
+    document.getElementById('s2').classList.remove('lit');
+    document.getElementById('s2').classList.add('done');
+    document.getElementById('n2').textContent='✓';
+    document.getElementById('s3').classList.add('done');
+
+    const msgs={1:'🎉 AI Sheet + PP File + Report ready!',2:'🎉 PP File + Assign Sheet ready!'};
+    lg(msgs[MODE],'ok');
+    btn.innerHTML='✓ Done!';
+
+  }catch(e){
+    lg('Error: '+e.message,'err');
+    document.getElementById('s2').classList.add('fail');
+    btn.disabled=false;
+    btn.innerHTML='⚡ Dobara Try Karo';
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>
