@@ -327,7 +327,13 @@ function pick(inp,key){
 }
 
 // ── CSV ──────────────────────────────────────────
-function parseCSV(txt){return txt.split(/\r?\n/).filter(l=>l.trim()).map(parseLine);}
+function parseCSV(txt){
+  // Use SheetJS to parse CSV — handles all edge cases (quotes, newlines, special chars)
+  const wb=XLSX.read(txt,{type:'string',raw:false});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  return data.filter(r=>r.some(v=>String(v).trim()!==''));
+}
 function parseLine(line){
   const r=[];let cur='',q=false;
   for(let i=0;i<line.length;i++){
@@ -338,7 +344,8 @@ function parseLine(line){
   }
   r.push(cur.trim());return r;
 }
-function toObjs(rows){const h=rows[0];return rows.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]||''])));}
+function toObjs(rows){const h=rows[0];return rows.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]??''])));}
+function sv(v){return v===null||v===undefined?'':String(v);}
 function toCSV(heads,rows){
   const e=v=>{const s=String(v??'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s;};
   return[heads.map(e).join(','),...rows.map(r=>heads.map(h=>e(r[h])).join(','))].join('\n');
@@ -346,15 +353,17 @@ function toCSV(heads,rows){
 function readF(file){
   return new Promise((res,rej)=>{
     const fr=new FileReader();
-    if(file.name.match(/\.(xlsx|xls)$/i)){
-      fr.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'});res(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));}catch(err){rej(err);}};
-      fr.onerror=()=>rej(new Error('File read failed'));
-      fr.readAsArrayBuffer(file);
-    }else{
-      fr.onload=e=>res(e.target.result);
-      fr.onerror=()=>rej(new Error('File read failed'));
-      fr.readAsText(file);
-    }
+    // Use SheetJS for both xlsx AND csv — handles all encoding/quote edge cases
+    fr.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'array',codepage:1252});
+        // Convert sheet to CSV string and return — parseCSV will use SheetJS again
+        const csv=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]],{forceQuotes:false});
+        res(csv);
+      }catch(err){rej(err);}
+    };
+    fr.onerror=()=>rej(new Error('File read failed'));
+    fr.readAsArrayBuffer(file);
   });
 }
 
@@ -429,14 +438,15 @@ function parseRestaurant(rTxt,fname){
   const itemMap={},catMap={};
   for(let i=1;i<rRows.length;i++){
     const row=rRows[i];
-    const raw=row[iiIdx]||'';const nm=(row[inIdx]||'').trim();
-    if(!raw||!nm)continue;
-    const id=raw.includes('.')?String(parseInt(raw)):raw.trim();
+    const raw=row[iiIdx]??'';const nm=String(row[inIdx]||'').trim();
+    if(raw===''||raw===null||raw===undefined||!nm)continue;
+    const rawStr=String(raw);
+    const id=rawStr.includes('.')?String(parseInt(rawStr)):rawStr.trim();
     itemMap[id]=nm;
     if(icIdx>=0)catMap[nm]=(row[icIdx]||'Other').trim();
   }
   const fnM=fname.match(/(\d{4,})/);
-  const cId=irIdx>=0&&rRows[1]?String(parseInt(rRows[1][irIdx]||'0')):null;
+  const cId=irIdx>=0&&rRows[1]?String(parseInt(String(rRows[1][irIdx]||'0'))):null;
   const restId=fnM?fnM[1]:(cId||'output');
   return{itemMap,catMap,restId,rObjs:toObjs(rRows)};
 }
@@ -447,18 +457,18 @@ function parseAddon(aTxt,itemMap){
   const aObjs=toObjs(aRows);
   const gvm={};
   for(const row of aObjs){
-    const g=(row['AddonGroup Name']||'').trim();
-    const v=String(row['Addon IsVeg'])==='1'?'veg':'non-veg';
+    const g=sv(row['AddonGroup Name']).trim();
+    const v=sv(row['Addon IsVeg'])==='1'?'veg':'non-veg';
     if(!gvm[g])gvm[g]=new Set();gvm[g].add(v);
   }
   const dups=AMBIGUOUS.filter(g=>gvm[g]&&gvm[g].size>1);
   const iAddonMap={},addonRows=[];
   for(const row of aObjs){
-    const ids=(row['Items Id']||'').split(',').map(s=>s.trim());
-    const grp=(row['AddonGroup Name']||'').trim();
-    const an=(row['Addon Name']||'').trim();
+    const ids=sv(row['Items Id']).split(',').map(s=>s.trim());
+    const grp=sv(row['AddonGroup Name']).trim();
+    const an=sv(row['Addon Name']).trim();
     const pr=row['Addon Price']||'0';
-    const vk=String(row['Addon IsVeg'])==='1'?'veg':'non-veg';
+    const vk=sv(row['Addon IsVeg'])==='1'?'veg':'non-veg';
     const dg=dispGrp(grp,an,dups);
     addonRows.push({group:grp,addonName:an,price:pr,vegKey:vk});
     for(const id of ids){
@@ -544,26 +554,76 @@ async function run(){
       const aiH=['Name','Item_Online_DisplayName','Variation_Name','Price',
         'Category','Category_Online_DisplayName','Short_Code','Short_Code_2',
         'Description','Attributes','Goods_Services'];
+
+      // Build variant map: V1 -> [{ name:'SINGLE', delta:0 }, { name:'FULL', delta:110 }]
+      const variantMap={};
+      for(const r of rObjs){
+        const parent=sv(r['Parent']).trim();
+        if(!parent.startsWith('V')) continue;
+        const vname=sv(r['Name']).trim();
+        const vdelta=parseFloat(r['price']||'0')||0;
+        if(!variantMap[parent]) variantMap[parent]=[];
+        variantMap[parent].push({name:vname.charAt(0).toUpperCase()+vname.slice(1).toLowerCase(), delta:Math.round(vdelta*100)/100});
+      }
+
       const aiRows=[];
       for(const r of rObjs){
-        const nm=(r['Name']||'').trim();if(!nm)continue;
-        const cat=(r['mainCategoryName']||'').trim();
-        const price=r['price']||'0';
-        const desc=(r['description']||'').trim();
-        const vegRaw=(r['veg_egg_non']||'veg').trim().toLowerCase();
+        const parent=sv(r['Parent']).trim();
+        // Skip variant rows (Parent=V1,V2...) — handled via variantMap
+        if(parent.startsWith('V')) continue;
+        // Skip rows with no Name or no itemId (safety)
+        const nm=sv(r['Name']).trim(); if(!nm) continue;
+        const cat=sv(r['mainCategoryName']).trim(); if(!cat) continue;
+
+        const basePrice=parseFloat(r['price']||'0')||0;
+        const desc=sv(r['description']).trim();
+        const vegRaw=sv(r['veg_egg_non']||'veg').trim().toLowerCase();
         const attr=vegRaw==='non-veg'?'Non-veg':vegRaw==='egg'?'egg':'veg';
-        const priceNum=parseFloat(price);
-        const rowNum=aiRows.length+1;
-        const shortCode=codeRaw?(rowNum+' ['+codeRaw+']'):'';
-        aiRows.push({
-          Name:nm+bracket, Item_Online_DisplayName:nm,
-          Variation_Name:'',
-          Price:Number.isInteger(priceNum)?priceNum:price,
-          Category:cat+bracket, Category_Online_DisplayName:cat,
-          Short_Code:shortCode, Short_Code_2:'',
-          Description:desc==='nan'?'':desc,
-          Attributes:attr, Goods_Services:'services'
-        });
+
+        // Check if this item has variants
+        const iNum=parent.replace('I','');
+        const vKey=`V${iNum}`;
+        const variants=variantMap[vKey];
+
+        if(variants && variants.length>0){
+          // Row 1: parent item, Price=0, no variation
+          const scParent=codeRaw?((aiRows.length+1)+' ['+codeRaw+']'):'';
+          aiRows.push({
+            Name:nm+bracket, Item_Online_DisplayName:nm,
+            Variation_Name:'',
+            Price:0,
+            Category:cat+bracket, Category_Online_DisplayName:cat,
+            Short_Code:scParent, Short_Code_2:'',
+            Description:desc==='nan'?'':desc,
+            Attributes:attr, Goods_Services:'services'
+          });
+          // Variant rows: base price + delta
+          for(const v of variants){
+            const finalPrice=basePrice+v.delta;
+            const scVar=codeRaw?((aiRows.length+1)+' ['+codeRaw+']'):'';
+            aiRows.push({
+              Name:nm+bracket, Item_Online_DisplayName:nm,
+              Variation_Name:v.name,
+              Price:Math.round(finalPrice*100)/100,
+              Category:cat+bracket, Category_Online_DisplayName:cat,
+              Short_Code:scVar, Short_Code_2:'',
+              Description:'',
+              Attributes:attr, Goods_Services:'services'
+            });
+          }
+        } else {
+          // No variants — single row
+          const sc=codeRaw?((aiRows.length+1)+' ['+codeRaw+']'):'';
+          aiRows.push({
+            Name:nm+bracket, Item_Online_DisplayName:nm,
+            Variation_Name:'',
+            Price:Math.round(basePrice*100)/100,
+            Category:cat+bracket, Category_Online_DisplayName:cat,
+            Short_Code:sc, Short_Code_2:'',
+            Description:desc==='nan'?'':desc,
+            Attributes:attr, Goods_Services:'services'
+          });
+        }
       }
       const aiCSV=toCSV(aiH,aiRows);
       const aiBlob=new Blob([aiCSV],{type:'text/csv'});
