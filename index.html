@@ -455,28 +455,97 @@ function parseRestaurant(rTxt,fname){
 function parseAddon(aTxt,itemMap){
   const aRows=parseCSV(aTxt);
   const aObjs=toObjs(aRows);
+  const dups=[];// Soup/Curry dup check
   const gvm={};
   for(const row of aObjs){
     const g=sv(row['AddonGroup Name']).trim();
     const v=sv(row['Addon IsVeg'])==='1'?'veg':'non-veg';
     if(!gvm[g])gvm[g]=new Set();gvm[g].add(v);
   }
-  const dups=AMBIGUOUS.filter(g=>gvm[g]&&gvm[g].size>1);
-  const iAddonMap={},addonRows=[];
+  AMBIGUOUS.forEach(g=>{if(gvm[g]&&gvm[g].size>1)dups.push(g);});
+
+  // Step 1: Build item→addon list map (which addons go to which item)
+  // itemAddonList[itemId] = [{group,addonName,price,vegKey}]
+  const itemAddonList={};
   for(const row of aObjs){
-    const ids=sv(row['Items Id']).split(',').map(s=>s.trim());
+    const ids=sv(row['Items Id']).split(',').map(s=>s.trim()).filter(Boolean);
     const grp=sv(row['AddonGroup Name']).trim();
     const an=sv(row['Addon Name']).trim();
     const pr=row['Addon Price']||'0';
     const vk=sv(row['Addon IsVeg'])==='1'?'veg':'non-veg';
-    const dg=dispGrp(grp,an,dups);
-    addonRows.push({group:grp,addonName:an,price:pr,vegKey:vk});
     for(const id of ids){
-      const nm=itemMap[id];if(!nm)continue;
-      if(!iAddonMap[nm])iAddonMap[nm]=new Set();
-      iAddonMap[nm].add(dg);
+      if(!itemAddonList[id])itemAddonList[id]=[];
+      itemAddonList[id].push({group:grp,addonName:an,price:pr,vegKey:vk});
     }
   }
+
+  // Step 2: For each item, find unique combo per group
+  // comboKey = group + '||' + sorted addon names joined
+  // Each unique combo gets a unique display name: "Add-ons", "Add-ons 2", "Add-ons 3"...
+  const comboNameMap={};// comboKey → unique display name
+  const comboCounter={};// original group name → count of unique combos
+  const itemComboMap={};// itemId → {group → comboKey}
+
+  for(const [iid,addons] of Object.entries(itemAddonList)){
+    // Group addons by group name
+    const byGroup={};
+    for(const a of addons){
+      if(!byGroup[a.group])byGroup[a.group]=[];
+      byGroup[a.group].push(a.addonName);
+    }
+    itemComboMap[iid]={};
+    for(const [grp,addonList] of Object.entries(byGroup)){
+      const sortedKey=grp+'||'+[...addonList].sort().join('||');
+      if(!comboNameMap[sortedKey]){
+        if(!comboCounter[grp])comboCounter[grp]=0;
+        comboCounter[grp]++;
+        const cnt=comboCounter[grp];
+        comboNameMap[sortedKey]=cnt===1?grp:grp+' '+cnt;
+      }
+      itemComboMap[iid][grp]=sortedKey;
+    }
+  }
+
+  // Step 3: Build addonRows with unique group names
+  // For each addon row, for each item it belongs to, use that item's comboKey
+  // But addonRows need to be per-unique-group (not per item)
+  // So: collect unique (comboKey, addonName, price, vegKey) combos
+  const seenAddonRows=new Set();
+  const addonRows=[];
+  for(const row of aObjs){
+    const ids=sv(row['Items Id']).split(',').map(s=>s.trim()).filter(Boolean);
+    const grp=sv(row['AddonGroup Name']).trim();
+    const an=sv(row['Addon Name']).trim();
+    const pr=row['Addon Price']||'0';
+    const vk=sv(row['Addon IsVeg'])==='1'?'veg':'non-veg';
+    // Find all unique combo names this addon appears in
+    const comboNamesForAddon=new Set();
+    for(const id of ids){
+      if(itemComboMap[id]&&itemComboMap[id][grp]){
+        const ck=itemComboMap[id][grp];
+        comboNamesForAddon.add(comboNameMap[ck]);
+      }
+    }
+    for(const cn of comboNamesForAddon){
+      const rowKey=cn+'__'+an+'__'+vk;
+      if(!seenAddonRows.has(rowKey)){
+        seenAddonRows.add(rowKey);
+        addonRows.push({group:cn,origGroup:grp,addonName:an,price:pr,vegKey:vk});
+      }
+    }
+  }
+
+  // Step 4: Build iAddonMap (item name → Set of unique group names)
+  const iAddonMap={};
+  for(const [iid,grpMap] of Object.entries(itemComboMap)){
+    const nm=itemMap[iid];if(!nm)continue;
+    if(!iAddonMap[nm])iAddonMap[nm]=new Set();
+    for(const [grp,ck] of Object.entries(grpMap)){
+      iAddonMap[nm].add(comboNameMap[ck]);
+    }
+  }
+
+  lg(`Unique addon groups: ${Object.keys(comboNameMap).length} (duplicates split)`,'info');
   return{iAddonMap,addonRows,dups};
 }
 
@@ -486,17 +555,21 @@ function buildPP(addonRows,dups,grpCode){
     'Addon_Min','Addon_Max','Addon_Item_Selection','Max_Selection_Per_Addon',
     'Show_In_Online','Show_In_Pos','Addon_Group_Show_In_Captain','Allow_Open_Quantity',
     'Addon_Item_Name','Addon_Item_Price','Addon_item_status','Attribute','Rank','Sapcode','Show_In_Captain'];
+  // Count addons per unique group
   const gkc={};
   for(const r of addonRows){const gk=r.group+'_'+r.vegKey;gkc[gk]=(gkc[gk]||0)+1;}
   const ppRows=[];let sap=1;
   for(const r of addonRows){
     const gk=r.group+'_'+r.vegKey;
     const mx=gkc[gk];
-    const dn=dispGrp(r.group,r.addonName,dups);
-    const dnWithCode=grpCode?(dn+' '+grpCode):dn;
+    // Internal name = unique (with digit suffix if needed)
+    // Online display = original clean name (no digit — professional look)
+    const internalName=r.group;// e.g. "Chicken 2"
+    const displayName=r.origGroup||r.group.replace(/\s+\d+$/,'');// strip trailing digit → "Chicken"
+    const internalWithCode=grpCode?(internalName+' '+grpCode):internalName;
     const pr=parseFloat(r.price);
     ppRows.push({
-      Addon_Group_Id:'',Addon_Group_Name:dnWithCode,Addon_Group_online_display:dn,
+      Addon_Group_Id:'',Addon_Group_Name:internalWithCode,Addon_Group_online_display:displayName,
       Addon_Group_status:'yes',Addon_Min:0,Addon_Max:mx,Addon_Item_Selection:'M',Max_Selection_Per_Addon:mx,
       Show_In_Online:'Yes',Show_In_Pos:'No',Addon_Group_Show_In_Captain:'No',Allow_Open_Quantity:'No',
       Addon_Item_Name:r.addonName,Addon_Item_Price:Number.isInteger(pr)?pr:r.price,
